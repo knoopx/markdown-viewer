@@ -1,0 +1,20 @@
+[package]
+name = "markdown-viewer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui-kit = "=0.7.1"
+anyhow = "1.0.104"
+notify = "8.2.0"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1"
+# Resolves the user's effective GTK 4 theme (symbolic colors, fonts, color
+# scheme) into a toolkit-neutral snapshot. Default features only: the `gpui`
+# feature is pinned to gpui-component 0.5.1, which is type-incompatible with
+# our gpui-kit 0.7.1; the snapshot is plain serde JSON, so the semantic
+# palette is mapped onto gpui-kit's Theme by hand in theme.rs.
+native-theme-gtk = "0.1"
+# smol provides the async `Timer` used to debounce file events; it is already
+# in the dependency tree via gpui-base.
+smol = "2.0.2"

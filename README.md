@@ -5,6 +5,8 @@ Each file opens in its own window, styled by the user's desktop GTK 4 theme (the
 built-in default palette as the fallback), and reloads in place — preserving scroll
 position — whenever the file changes on disk.
 
+<img width="1925" height="2158" alt="2026-10-08 12-08-22" src="https://github.com/user-attachments/assets/03df794d-5264-421e-aea1-3d6ee53e695c" />
+
 ## Usage
 
 ```

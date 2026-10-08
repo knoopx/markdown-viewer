@@ -32,6 +32,16 @@
       vulkanEnv = {
         RUSTFLAGS = "-L ${pkgs.vulkan-loader}/lib";
       };
+
+      desktopItem = pkgs.makeDesktopItem {
+        name = "markdown-viewer";
+        desktopName = "Markdown Viewer";
+        exec = "markdown-viewer %f";
+        icon = "text-markdown";
+        terminal = false;
+        type = "Application";
+        mimeTypes = [ "text/markdown" ];
+      };
     in
     {
       packages.${system}.default = pkgs.rustPlatform.buildRustPackage {
@@ -44,15 +54,11 @@
         nativeBuildInputs = [ pkgs.pkg-config ];
         buildInputs = guiDeps;
         env = vulkanEnv;
-        desktopItem = pkgs.makeDesktopItem {
-          name = "markdown-viewer";
-          desktopName = "Markdown Viewer";
-          exec = "markdown-viewer %f";
-          icon = "text-markdown";
-          terminal = false;
-          type = "Application";
-          mimeTypes = [ "text/markdown" ];
-        };
+        postInstall = ''
+          mkdir -p $out/share/applications
+          install -m 444 ${desktopItem}/share/applications/markdown-viewer.desktop \
+            $out/share/applications/markdown-viewer.desktop
+        '';
       };
       defaultPackage.${system} = self.packages.${system}.default;
 

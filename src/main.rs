@@ -15,6 +15,7 @@ use gpui_kit::{
     application, px, size,
 };
 
+mod image_fit;
 mod theme;
 mod watcher;
 mod window_view;

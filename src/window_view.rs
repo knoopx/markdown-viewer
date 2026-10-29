@@ -8,7 +8,7 @@
 //! column are applied to a div INSIDE the scroll, so the padding scrolls with
 //! the content instead of insetting the scroll viewport.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui_kit::base::{
@@ -16,12 +16,13 @@ use gpui_kit::base::{
     text::{TextView, TextViewState, TextViewStyle},
 };
 use gpui_kit::{
-    AppContext, AsyncApp, Context, Entity, FocusHandle, ImageSource, InteractiveElement,
+    AppContext, AsyncApp, Context, Entity, FocusHandle, InteractiveElement,
     IntoElement, KeyDownEvent, ParentElement, Pixels, Render, ScrollHandle, SharedString,
     SharedUri, StatefulInteractiveElement, Styled, WeakEntity, Window, div, point, px, relative,
 };
 use smol::Timer;
 
+use crate::image_fit;
 use crate::watcher::FileWatcher;
 
 /// How long to wait for further file events before treating a burst as settled.
@@ -42,7 +43,10 @@ const LINE_HEIGHT: f32 = 1.7;
 /// actual window width (no hardcoded window size): it fills the window when
 /// the window is narrower than this, and is centered with equal side margins
 /// when it is wider.
-const MAX_CONTENT_WIDTH: f32 = 780.0;
+///
+/// `pub(crate)` because [`image_fit::FigureImages`] caps a Markdown image to
+/// the same column the text is laid out in.
+pub(crate) const MAX_CONTENT_WIDTH: f32 = 780.0;
 /// Top content padding, in pixels.
 const TOP_PADDING: f32 = 30.0;
 /// Bottom content padding, in pixels.
@@ -300,7 +304,13 @@ impl Render for MarkdownWindow {
                             .line_height(relative(LINE_HEIGHT))
                             .child(
                                 with_body_font(
-                                    TextView::new(&self.view_state).style(self.text_style.clone()),
+                                    TextView::new(&self.view_state)
+                                        .style(self.text_style.clone())
+                                        // Markdown images are sized by this plugin rather
+                                        // than by gpui-kit, which turns any image that
+                                        // shares a paragraph with text into a ~20px inline
+                                        // glyph (see `image_fit`).
+                                        .plugin(image_fit::FigureImages::new(&self.path)),
                                     self.body_font.as_ref(),
                                 )
                                 // Non-scrollable: the TextView expands to
@@ -314,27 +324,12 @@ impl Render for MarkdownWindow {
                                 // resolve as an embedded resource and
                                 // fail silently; resolve it against the
                                 // markdown file's directory instead.
-                                .image_source(
-                                    move |uri: &SharedUri| {
-                                        let source = uri.as_str();
-                                        if source.starts_with("http://")
-                                            || source.starts_with("https://")
-                                        {
-                                            ImageSource::from(uri.clone())
-                                        } else if let Some(dir) = base_dir.as_ref() {
-                                            let absolute = if Path::new(source).is_absolute() {
-                                                PathBuf::from(source)
-                                            } else {
-                                                dir.join(source)
-                                            };
-                                            ImageSource::from(absolute)
-                                        } else {
-                                            // No parent directory: keep the
-                                            // default resolution.
-                                            ImageSource::from(uri.clone())
-                                        }
-                                    },
-                                ),
+                                // This covers the images gpui-kit renders itself
+                                // (inline HTML `<img>`); the Markdown images go
+                                // through `image_fit`, which resolves the same way.
+                                .image_source(move |uri: &SharedUri| {
+                                    image_fit::image_source(uri.as_str(), base_dir.as_deref())
+                                }),
                             ),
                     ),
             )

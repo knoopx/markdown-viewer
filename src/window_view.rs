@@ -17,8 +17,8 @@ use gpui_kit::base::{
 };
 use gpui_kit::{
     AppContext, AsyncApp, Context, Entity, FocusHandle, ImageSource, InteractiveElement,
-    IntoElement, KeyDownEvent, ParentElement, Pixels, Render, ScrollHandle, SharedUri,
-    StatefulInteractiveElement, Styled, WeakEntity, Window, div, point, px, relative,
+    IntoElement, KeyDownEvent, ParentElement, Pixels, Render, ScrollHandle, SharedString,
+    SharedUri, StatefulInteractiveElement, Styled, WeakEntity, Window, div, point, px, relative,
 };
 use smol::Timer;
 
@@ -26,6 +26,15 @@ use crate::watcher::FileWatcher;
 
 /// How long to wait for further file events before treating a burst as settled.
 const DEBOUNCE: Duration = Duration::from_millis(250);
+
+/// Names `family` on an element that accepts text styling, so its text runs are
+/// resolved from a family GPUI can load bold and italic faces from.
+fn with_body_font<E: Styled>(element: E, family: Option<&SharedString>) -> E {
+    match family {
+        Some(family) => element.font_family(family.clone()),
+        None => element,
+    }
+}
 
 /// Line-height ratio of the rendered text.
 const LINE_HEIGHT: f32 = 1.7;
@@ -45,6 +54,11 @@ pub struct MarkdownWindow {
     view_state: Entity<TextViewState>,
     /// The text-view style applied to the markdown content.
     text_style: TextViewStyle,
+    /// The body font family, validated against GPUI's font database and named
+    /// on the text view. Without it the body keeps GPUI's `.SystemUIFont`
+    /// sentinel, which is not a family in that database, so GPUI answers the
+    /// bold request of `**strong**` with a normal-weight fallback face.
+    body_font: Option<SharedString>,
     /// Focus target for the window; owns the Page Up/Down key handler.
     focus_handle: FocusHandle,
     /// True until the first render has moved focus to `focus_handle`.
@@ -78,6 +92,7 @@ impl MarkdownWindow {
         path: PathBuf,
         text: String,
         text_style: TextViewStyle,
+        body_font: Option<SharedString>,
         cx: &mut Context<Self>,
     ) -> Self {
         let view_state = cx.new(|cx| TextViewState::markdown(&text, cx));
@@ -127,6 +142,7 @@ impl MarkdownWindow {
         Self {
             view_state,
             text_style,
+            body_font,
             path,
             focus_handle,
             needs_focus: true,
@@ -283,20 +299,23 @@ impl Render for MarkdownWindow {
                             .pr(content_pad)
                             .line_height(relative(LINE_HEIGHT))
                             .child(
-                                TextView::new(&self.view_state)
-                                    .style(self.text_style.clone())
-                                    // Non-scrollable: the TextView expands to
-                                    // fit all of its content and has no
-                                    // internal scrollbar, so the outer div's
-                                    // scroll handle owns the scroll.
-                                    .scrollable(false)
-                                    .w_full()
-                                    // A standalone binary has no asset
-                                    // loader, so a bare `sample.png` would
-                                    // resolve as an embedded resource and
-                                    // fail silently; resolve it against the
-                                    // markdown file's directory instead.
-                                    .image_source(move |uri: &SharedUri| {
+                                with_body_font(
+                                    TextView::new(&self.view_state).style(self.text_style.clone()),
+                                    self.body_font.as_ref(),
+                                )
+                                // Non-scrollable: the TextView expands to
+                                // fit all of its content and has no
+                                // internal scrollbar, so the outer div's
+                                // scroll handle owns the scroll.
+                                .scrollable(false)
+                                .w_full()
+                                // A standalone binary has no asset
+                                // loader, so a bare `sample.png` would
+                                // resolve as an embedded resource and
+                                // fail silently; resolve it against the
+                                // markdown file's directory instead.
+                                .image_source(
+                                    move |uri: &SharedUri| {
                                         let source = uri.as_str();
                                         if source.starts_with("http://")
                                             || source.starts_with("https://")
@@ -314,7 +333,8 @@ impl Render for MarkdownWindow {
                                             // default resolution.
                                             ImageSource::from(uri.clone())
                                         }
-                                    }),
+                                    },
+                                ),
                             ),
                     ),
             )

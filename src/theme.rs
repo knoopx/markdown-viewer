@@ -6,6 +6,7 @@
 //! out), the built-in defaults apply; a partial file only
 //! overrides the fields it names.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -287,6 +288,27 @@ pub fn probe_gtk() -> Option<GtkTheme> {
 /// `Theme::update`; colors are applied in a second `Theme::update` because
 /// setting `theme.mode` in the first update loads that mode's registered
 /// theme, which would overwrite any colors set in the same closure.
+/// Picks the body font family: the first candidate that GPUI's own font
+/// database knows, in candidate order.
+///
+/// The name has to be validated against GPUI (`TextSystem::all_font_names`),
+/// not only against fontconfig. GPUI resolves a text run's face by the family
+/// written in its style, and when that name is not in its database
+/// `TextSystem::resolve_font` walks its fallback stack, whose entries are all
+/// built with `weight: NORMAL`; the bold request markdown emits for
+/// `**strong**` then returns a **regular** face, so emphasis renders flat. The
+/// family is chosen here and named on the text view (`window_view`) for that
+/// reason.
+pub fn pick_font_family(
+    candidates: impl IntoIterator<Item = impl Into<String>>,
+    available: &HashSet<String>,
+) -> Option<String> {
+    candidates
+        .into_iter()
+        .map(Into::into)
+        .find(|name| available.contains(&name.to_lowercase()))
+}
+
 pub fn apply(
     cx: &mut App,
     cfg: Option<&ThemeConfig>,
@@ -627,4 +649,45 @@ where
     corners.top_right = Some(value.clone());
     corners.bottom_left = Some(value.clone());
     corners.bottom_right = Some(value.clone());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn available(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|name| name.to_lowercase()).collect()
+    }
+
+    #[test]
+    fn pick_font_family_keeps_candidate_order() {
+        let available = available(&["Inter", "DejaVu Sans"]);
+        assert_eq!(
+            pick_font_family(["DejaVu Sans", "Inter"], &available).as_deref(),
+            Some("DejaVu Sans")
+        );
+        assert_eq!(
+            pick_font_family(["Inter", "DejaVu Sans"], &available).as_deref(),
+            Some("Inter")
+        );
+    }
+
+    /// A family GPUI's database does not know must not be selected: GPUI answers
+    /// such a request with its fallback stack, which is all normal-weight, and
+    /// markdown `**strong**` renders flat. That is the bug this guards.
+    #[test]
+    fn pick_font_family_rejects_names_gpui_cannot_resolve() {
+        let available = available(&["Inter"]);
+        assert_eq!(pick_font_family(["IBM Plex Sans"], &available), None);
+        assert_eq!(pick_font_family(Vec::<String>::new(), &available), None);
+    }
+
+    #[test]
+    fn pick_font_family_matches_names_case_insensitively() {
+        let available = available(&["Inter"]);
+        assert_eq!(
+            pick_font_family(["inter"], &available).as_deref(),
+            Some("inter")
+        );
+    }
 }

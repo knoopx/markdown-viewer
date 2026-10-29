@@ -62,8 +62,29 @@ fn main() -> Result<()> {
             system_font.as_deref(),
             system_mono_font.as_deref(),
         );
+        // The body family has to be one GPUI itself can resolve: a name missing
+        // from its font database is replaced by GPUI's normal-weight fallback
+        // stack, which renders `**strong**` flat. Validate against GPUI rather
+        // than trusting fontconfig alone.
+        let available: std::collections::HashSet<String> = cx
+            .text_system()
+            .all_font_names()
+            .into_iter()
+            .map(|name| name.to_lowercase())
+            .collect();
+        let body_font = theme::pick_font_family(
+            [
+                theme_config.as_ref().and_then(|c| c.font_family.clone()),
+                gtk_theme.as_ref().and_then(|g| g.font_family.clone()),
+                system_font.clone(),
+            ]
+            .into_iter()
+            .flatten(),
+            &available,
+        )
+        .map(SharedString::from);
         for (path, content) in files {
-            open_markdown_window(path, content, style.clone(), cx);
+            open_markdown_window(path, content, style.clone(), body_font.clone(), cx);
         }
     });
 
@@ -71,7 +92,13 @@ fn main() -> Result<()> {
 }
 
 /// Opens a single markdown file in its own window.
-fn open_markdown_window(path: PathBuf, content: String, style: TextViewStyle, cx: &mut App) {
+fn open_markdown_window(
+    path: PathBuf,
+    content: String,
+    style: TextViewStyle,
+    body_font: Option<SharedString>,
+    cx: &mut App,
+) {
     let title = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -93,7 +120,7 @@ fn open_markdown_window(path: PathBuf, content: String, style: TextViewStyle, cx
     };
 
     gpui_kit::open_window(options, cx, move |_, cx| {
-        cx.new(|cx| window_view::MarkdownWindow::new(path, content, style, cx))
+        cx.new(|cx| window_view::MarkdownWindow::new(path, content, style, body_font, cx))
     })
     // A window-open failure here is a provably rare platform failure (display
     // unavailable); the gpui-kit docs pattern is to expect it away.
